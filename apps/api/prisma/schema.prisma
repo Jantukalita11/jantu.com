@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships Membership[]
+  apiKeys     ApiKey[]
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships Membership[]
+  projects    Project[]
+}
+
+model Membership {
+  id      String @id @default(cuid())
+  role    Role
+  userId  String
+  teamId  String
+  user    User   @relation(fields: [userId], references: [id])
+  team    Team   @relation(fields: [teamId], references: [id])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  teamId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  team      Team     @relation(fields: [teamId], references: [id])
+}
+
+model Voice {
+  id        String   @id @default(cuid())
+  teamId    String
+  name      String
+  kind      String   // instant | professional
+  language  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  teamId    String
+  projectId String?
+  type      String   // tts | stt | dubbing
+  status    String   // queued | running | completed | failed
+  params    Json
+  result    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  teamId    String
+  name      String
+  keyHash   String   @unique
+  createdAt DateTime @default(now())
+}
+
+model CreditLedger {
+  id        String   @id @default(cuid())
+  teamId    String
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
+}
