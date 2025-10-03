@@ -1,0 +1,360 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  CREATOR
+  PRO
+  SCALE
+  BUSINESS
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+}
+
+enum VoiceType {
+  PRESET
+  CLONED_INSTANT
+  CLONED_PROFESSIONAL
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NEUTRAL
+}
+
+enum AgeRange {
+  CHILD
+  YOUNG_ADULT
+  ADULT
+  ELDERLY
+}
+
+enum ProjectType {
+  TTS
+  DUBBING
+  CONVERSATION
+  MUSIC
+}
+
+enum JobType {
+  TTS
+  STT
+  VOICE_CLONE
+  DUBBING
+  MUSIC_GENERATION
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  name              String
+  avatar            String?
+  password          String?
+  emailVerified     Boolean   @default(false)
+  emailVerifiedAt   DateTime?
+  role              UserRole  @default(VIEWER)
+  teamId            String?
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  team              Team?     @relation(fields: [teamId], references: [id])
+  ownedTeams        Team[]    @relation("TeamOwner")
+  subscription      Subscription?
+  projects          Project[]
+  voices            Voice[]
+  audioJobs         AudioJob[]
+  apiKeys           ApiKey[]
+  usageMetrics      UsageMetric[]
+  oauthAccounts     OAuthAccount[]
+  sessions          Session[]
+  passwordResets    PasswordReset[]
+
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  ownerId     String
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id])
+  members     User[]
+  projects    Project[]
+  invites     TeamInvite[]
+
+  @@map("teams")
+}
+
+model TeamInvite {
+  id        String   @id @default(uuid())
+  teamId    String
+  email     String
+  role      UserRole
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, email])
+  @@map("team_invites")
+}
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  userId                String             @unique
+  planTier              PlanTier
+  status                SubscriptionStatus
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  creditsIncluded       Int
+  creditsUsed           Int                @default(0)
+  stripeSubscriptionId  String?            @unique
+  stripeCustomerId      String?
+  stripePriceId         String?
+  cancelAtPeriodEnd     Boolean            @default(false)
+  canceledAt            DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  // Relations
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Voice {
+  id          String    @id @default(uuid())
+  name        String
+  type        VoiceType
+  language    String
+  gender      Gender
+  ageRange    AgeRange
+  accent      String?
+  description String?
+  previewUrl  String?
+  isPublic    Boolean   @default(false)
+  userId      String?
+  modelPath   String?
+  settings    Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user        User?     @relation(fields: [userId], references: [id])
+  audioJobs   AudioJob[]
+
+  @@map("voices")
+}
+
+model Project {
+  id          String      @id @default(uuid())
+  name        String
+  type        ProjectType
+  description String?
+  userId      String
+  teamId      String?
+  settings    Json        @default("{}")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  user        User        @relation(fields: [userId], references: [id])
+  team        Team?       @relation(fields: [teamId], references: [id])
+  audioJobs   AudioJob[]
+
+  @@map("projects")
+}
+
+model AudioJob {
+  id          String    @id @default(uuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  userId      String
+  projectId   String?
+  voiceId     String?
+  inputData   Json
+  outputData  Json?
+  creditsUsed Int       @default(0)
+  errorMessage String?
+  processingStartedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id])
+  project     Project?  @relation(fields: [projectId], references: [id])
+  voice       Voice?    @relation(fields: [voiceId], references: [id])
+
+  @@map("audio_jobs")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  key         String   @unique
+  permissions Json     @default("[]")
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model UsageMetric {
+  id                String   @id @default(uuid())
+  userId            String
+  date              DateTime @db.Date
+  creditsUsed       Int      @default(0)
+  ttsCharacters     Int      @default(0)
+  sttMinutes        Float    @default(0)
+  voiceCloningJobs  Int      @default(0)
+  dubbingMinutes    Float    @default(0)
+  apiRequests       Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("usage_metrics")
+}
+
+model OAuthAccount {
+  id          String   @id @default(uuid())
+  userId      String
+  provider    String
+  providerId  String
+  email       String?
+  name        String?
+  avatar      String?
+  accessToken String?
+  refreshToken String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@map("oauth_accounts")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_resets")
+}
+
+model Webhook {
+  id          String   @id @default(uuid())
+  userId      String
+  url         String
+  events      String[] // Array of event types to listen for
+  secret      String?
+  isActive    Boolean  @default(true)
+  lastTriggeredAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id          String   @id @default(uuid())
+  webhookId   String
+  event       String
+  payload     Json
+  response    Json?
+  statusCode  Int?
+  attempts    Int      @default(1)
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("webhook_deliveries")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}

@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: audio-ai-studio-db
+    environment:
+      POSTGRES_DB: audio_ai_studio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - audio-ai-network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: audio-ai-studio-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - audio-ai-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: audio-ai-studio-backend
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/audio_ai_studio
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-development-jwt-secret
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - audio-ai-network
+    command: npm run dev
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: audio-ai-studio-frontend
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - audio-ai-network
+    command: npm run dev
+
+  # Queue Worker (for background jobs)
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: audio-ai-studio-worker
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/audio_ai_studio
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-development-jwt-secret
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - audio-ai-network
+    command: npm run worker
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  audio-ai-network:
+    driver: bridge
