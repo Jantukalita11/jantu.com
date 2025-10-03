@@ -1,0 +1,24 @@
+{
+  "name": "audio-ai-studio",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@10.9.3",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @audio-ai/web & npm run dev -w @audio-ai/api",
+    "build": "npm run build -w @audio-ai/web && npm run build -w @audio-ai/api && npm run build -w @audio-ai/sdk",
+    "lint": "eslint .",
+    "format": "prettier -w .",
+    "typecheck": "tsc --noEmit",
+    "db:push": "npm run db:push -w @audio-ai/api",
+    "db:migrate": "npm run db:migrate -w @audio-ai/api"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4"
+  }
+}

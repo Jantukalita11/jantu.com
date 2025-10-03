@@ -1,0 +1,62 @@
+openapi: 3.0.3
+info:
+  title: Audio AI Studio API
+  version: 0.1.0
+servers:
+  - url: http://localhost:4000/v1
+paths:
+  /auth/signin:
+    post:
+      summary: Sign in with email/password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /tts/synthesize:
+    post:
+      summary: Synthesize text to speech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                voiceId: { type: string }
+                language: { type: string }
+                speed: { type: number }
+                pitch: { type: number }
+                format: { type: string, enum: [mp3, wav] }
+      responses:
+        '200': { description: OK }
+  /stt/transcribe:
+    post:
+      summary: Transcribe audio file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200': { description: OK }
+  /voices:
+    get:
+      summary: List voices
+      responses:
+        '200': { description: OK }
