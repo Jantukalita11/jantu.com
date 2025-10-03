@@ -1,0 +1,425 @@
+// Audio AI Studio SaaS Platform Database Schema
+// Comprehensive schema for TTS, STT, voice cloning, and audio processing
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management & Authentication
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  emailVerified     DateTime?
+  name              String?
+  image             String?
+  hashedPassword    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Auth providers
+  accounts          Account[]
+  sessions          Session[]
+
+  // Team memberships
+  teamMemberships   TeamMembership[]
+
+  // Owned teams
+  ownedTeams        Team[]   @relation("TeamOwner")
+
+  // Projects created by user
+  projects          Project[]
+
+  // Jobs created by user
+  jobs              Job[]
+
+  // API keys
+  apiKeys           ApiKey[]
+
+  // Usage and billing
+  usageLogs         UsageLog[]
+  subscriptions     Subscription[]
+  invoices          Invoice[]
+
+  // Voice clones
+  voiceClones       VoiceClone[]
+
+  // Audit logs
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Team Management
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  avatar      String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner         User             @relation("TeamOwner", fields: [ownerId], references: [id])
+  memberships   TeamMembership[]
+  projects      Project[]
+  subscriptions Subscription[]
+  apiKeys       ApiKey[]
+  usageLogs     UsageLog[]
+  auditLogs     AuditLog[]
+
+  @@map("teams")
+}
+
+model TeamMembership {
+  id     String           @id @default(cuid())
+  userId String
+  teamId String
+  role   TeamRole
+  joinedAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("team_memberships")
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+// Projects & Audio Content
+model Project {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  type        ProjectType
+  status      ProjectStatus @default(DRAFT)
+  userId      String
+  teamId      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  team     Team?     @relation(fields: [teamId], references: [id])
+  tracks   AudioTrack[]
+  jobs     Job[]
+  exports  Export[]
+
+  @@map("projects")
+}
+
+enum ProjectType {
+  TTS
+  STT
+  VOICE_CLONE
+  DUBBING
+  CONVERSATIONAL_AI
+}
+
+enum ProjectStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  FAILED
+  ARCHIVED
+}
+
+model AudioTrack {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  content   String   @db.Text // Text content for TTS tracks
+  voiceId   String?  // Selected voice for TTS
+  order     Int      @default(0)
+  startTime Float?   // Start time in timeline (seconds)
+  endTime   Float?   // End time in timeline (seconds)
+  metadata  Json?    // Additional track metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("audio_tracks")
+}
+
+// Jobs & Processing
+model Job {
+  id          String    @id @default(cuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  projectId   String
+  userId      String
+  teamId      String?
+  inputData   Json      // Job input parameters
+  outputData  Json?     // Job results
+  progress    Float     @default(0)
+  error       String?   @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("jobs")
+}
+
+enum JobType {
+  TTS_GENERATE
+  STT_TRANSCRIBE
+  VOICE_CLONE_INSTANT
+  VOICE_CLONE_PROFESSIONAL
+  DUBBING_PROCESS
+  CONVERSATIONAL_AI
+  MUSIC_GENERATE
+  EXPORT_AUDIO
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// Voice Cloning
+model VoiceClone {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  type        VoiceCloneType
+  status      VoiceCloneStatus @default(PENDING)
+  userId      String
+  teamId      String?
+  sampleUrls  String[]      // URLs to training audio samples
+  cloneUrl    String?       // URL to generated voice clone
+  settings    Json?         // Cloning parameters
+  quality     String?       // Quality rating
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("voice_clones")
+}
+
+enum VoiceCloneType {
+  INSTANT
+  PROFESSIONAL
+}
+
+enum VoiceCloneStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Exports
+model Export {
+  id        String   @id @default(cuid())
+  projectId String
+  format    String   // mp3, wav, etc.
+  quality   String?  // bitrate, sample rate
+  url       String   // URL to exported file
+  size      Int?     // File size in bytes
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("exports")
+}
+
+// Credits & Usage Tracking
+model CreditPackage {
+  id          String   @id @default(cuid())
+  name        String
+  credits     Int
+  price       Decimal  @db.Decimal(10,2)
+  tier        PricingTier
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("credit_packages")
+}
+
+enum PricingTier {
+  FREE
+  STARTER
+  CREATOR
+  PRO
+  SCALE
+  BUSINESS
+  ENTERPRISE
+}
+
+model Subscription {
+  id                String        @id @default(cuid())
+  userId            String
+  teamId            String?
+  stripeCustomerId  String?
+  stripeSubscriptionId String?    @unique
+  status            SubscriptionStatus
+  tier              PricingTier
+  creditsIncluded   Int           @default(0)
+  creditsUsed       Int           @default(0)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id])
+  team        Team?           @relation(fields: [teamId], references: [id])
+  creditPackage CreditPackage? @relation(fields: [creditPackageId], references: [id])
+  creditPackageId String?
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  UNPAID
+  INCOMPLETE
+  TRIALING
+}
+
+model UsageLog {
+  id          String   @id @default(cuid())
+  userId      String
+  teamId      String?
+  jobId       String?  // Reference to job if applicable
+  operation   String   // TTS, STT, etc.
+  creditsUsed Int
+  metadata    Json?    // Additional usage details
+  createdAt   DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id])
+  team Team? @relation(fields: [teamId], references: [id])
+
+  @@map("usage_logs")
+}
+
+// API Management
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  key         String    @unique @db.Text
+  userId      String
+  teamId      String?
+  permissions Json      @default("[]") // Array of permissions
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User  @relation(fields: [userId], references: [id])
+  team Team? @relation(fields: [teamId], references: [id])
+
+  @@map("api_keys")
+}
+
+// Billing & Invoices
+model Invoice {
+  id                String      @id @default(cuid())
+  userId            String
+  teamId            String?
+  stripeInvoiceId   String?     @unique
+  amount            Decimal     @db.Decimal(10,2)
+  currency          String      @default("USD")
+  status            InvoiceStatus
+  invoicePdf        String?     // URL to PDF
+  description       String?
+  billingPeriodStart DateTime?
+  billingPeriodEnd   DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+// Audit & Security
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  teamId    String?
+  action    String   // login, create_project, etc.
+  resource  String   // project, user, etc.
+  resourceId String? // ID of affected resource
+  metadata  Json?    // Additional context
+  ipAddress String?
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+  team Team? @relation(fields: [teamId], references: [id])
+
+  @@map("audit_logs")
+}
