@@ -1,0 +1,277 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+}
+
+enum PlanType {
+  FREE
+  STARTER
+  CREATOR
+  PRO
+  SCALE
+  BUSINESS
+  ENTERPRISE
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum JobType {
+  TTS
+  STT
+  VOICE_CLONING
+  DUBBING
+  MUSIC_GENERATION
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  role      UserRole @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Authentication
+  passwordHash String?
+  emailVerified DateTime?
+  magicLinkToken String?
+  magicLinkExpires DateTime?
+
+  // OAuth
+  googleId String?
+  githubId String?
+  appleId  String?
+
+  // Subscription
+  subscriptionId String?
+  planType       PlanType @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  trialEndsAt    DateTime?
+  subscriptionEndsAt DateTime?
+
+  // Credits
+  creditsUsed    Int @default(0)
+  creditsLimit   Int @default(10000) // Free tier default
+  lastResetAt    DateTime @default(now())
+
+  // Team
+  teamId String?
+  team   Team? @relation(fields: [teamId], references: [id])
+  
+  // Relations
+  projects     Project[]
+  jobs         Job[]
+  voiceClones  VoiceClone[]
+  apiKeys      ApiKey[]
+  invoices     Invoice[]
+  usageLogs    UsageLog[]
+  teamMembers  TeamMember[]
+
+  @@map("users")
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Billing
+  subscriptionId String?
+  planType       PlanType @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  creditsUsed    Int @default(0)
+  creditsLimit   Int @default(10000)
+  seatLimit      Int @default(1)
+
+  // Relations
+  owner   User         @relation(fields: [ownerId], references: [id])
+  ownerId String
+  members TeamMember[]
+  projects Project[]
+  invoices Invoice[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  role      UserRole @default(VIEWER)
+  joinedAt  DateTime @default(now())
+  
+  team   Team @relation(fields: [teamId], references: [id])
+  teamId String
+  user   User @relation(fields: [userId], references: [id])
+  userId String
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+  
+  team   Team? @relation(fields: [teamId], references: [id])
+  teamId String?
+
+  tracks     Track[]
+  jobs       Job[]
+  voiceClones VoiceClone[]
+
+  @@map("projects")
+}
+
+model Track {
+  id        String   @id @default(cuid())
+  name      String
+  text      String
+  voiceId   String?
+  settings  Json?    // Voice settings, speed, pitch, etc.
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  @@map("tracks")
+}
+
+model VoiceClone {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("pending") // pending, processing, completed, failed
+  samples     Json     // Array of sample file URLs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+  
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
+  @@map("voice_clones")
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  type      JobType
+  status    JobStatus @default(PENDING)
+  input     Json     // Job input parameters
+  output    Json?    // Job output/results
+  error     String?
+  progress  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+  
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
+  @@map("jobs")
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  name      String
+  key       String   @unique
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+
+  @@map("api_keys")
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  amount    Int      // Amount in cents
+  currency  String   @default("usd")
+  status    String   // paid, pending, failed
+  stripeId  String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+  
+  team   Team? @relation(fields: [teamId], references: [id])
+  teamId String?
+
+  @@map("invoices")
+}
+
+model UsageLog {
+  id        String   @id @default(cuid())
+  type      String   // TTS, STT, etc.
+  credits   Int
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  // Relations
+  owner   User @relation(fields: [ownerId], references: [id])
+  ownerId String
+
+  @@map("usage_logs")
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  url       String
+  events    String[] // Array of event types
+  secret    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("webhooks")
+}
